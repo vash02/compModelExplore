@@ -1,0 +1,12 @@
+{
+  "model_name": "SaddleNode Bifurcation Model",
+  "equations": "d(x)/dt = alpha - (x)^2 where d(x)/dt represents the derivative of x with respect to time and is set equal to zero at equilibrium.",
+  "initial_conditions": [
+    "None specified"
+  ],
+  "parameters": {
+    "alpha": "Bifurcation parameter, varying in range from -0.2 to +0.4"
+  },
+  "vary_variable": "'x*' or the post-bifurcation state variable",
+  "objective": "To observe and plot how equilibrium points vary with different alpha values within the specified range."
+}

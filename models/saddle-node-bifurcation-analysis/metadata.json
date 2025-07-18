@@ -1,0 +1,10 @@
+{
+  "model_name": "Saddle-Node Bifurcation Analysis",
+  "equations": "-dx/dt = x + mu - 2x (lambda denotes eigenvalue)",
+  "initial_conditions": [],
+  "parameters": {
+    "mu": "bifurcation parameter"
+  },
+  "vary_variable": "mu",
+  "objective": "Identify and classify fixed points as stable or unstable based on eigenvalue analysis with respect to the bifurcation point."
+}

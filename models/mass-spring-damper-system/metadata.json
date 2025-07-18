@@ -1,0 +1,18 @@
+{
+  "model_name": "mass-spring-damper system",
+  "equations": "-\\frac{\\partial^2 x}{\\partial t^2} + \\omega'*\\frac{\\partial x}{\\partial t} + \\frac{k}{m}*x = 0",
+  "initial_conditions": [
+    "1",
+    "0"
+  ],
+  "parameters": {
+    "m": "variable representing mass, assumed to be known and constant",
+    "c": "damping coefficient (not varying in this experiment)",
+    "k": {
+      "min": "10",
+      "max": "100"
+    }
+  },
+  "vary_variable": "k",
+  "objective": "plot damping ratio versus k"
+}

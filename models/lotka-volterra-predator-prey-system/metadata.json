@@ -1,0 +1,16 @@
+{
+  "model_name": "Lotka-Volterra Predator-Prey System",
+  "equations": "- 'dydt = (\u03b4 * x * y) - (\u03b3 * y)' \n'dxdt = \u03b1 * x - (\u03b2 * x * y)",
+  "initial_conditions": [
+    "x=40",
+    "y=9"
+  ],
+  "parameters": {
+    "\u03b1": "1.0",
+    "\u03b2": "0.1",
+    "\u03b4": "0.075",
+    "\u03b3": "1.5"
+  },
+  "vary_variable": null,
+  "objective": "Simulate the predator-prey model for \u03b1=1, \u03b2=0.1, \u03b4=00.075, \u03b3=1.5 with initial populations x=40, y=9 over a period of 50 time units."
+}

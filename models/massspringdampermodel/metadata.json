@@ -1,0 +1,16 @@
+{
+  "model_name": "MassSpringDamperModel",
+  "equations": "m*x'' + c*x' + k*x = totalsquare()^2; x(0)=1, x'(0)=0.",
+  "initial_conditions": [
+    "x(0)",
+    "x'(0)"
+  ],
+  "parameters": {
+    "theta": "[pi]",
+    "m": "mass of the system (kg)",
+    "c": "damping coefficient (N*s/m)",
+    "k": "spring constant (N/m)"
+  },
+  "vary_variable": "k",
+  "objective": "plot damping ratio versus k"
+}

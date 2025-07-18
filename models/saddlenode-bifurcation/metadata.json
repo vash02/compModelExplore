@@ -1,0 +1,12 @@
+{
+  "model_name": "SaddleNode Bifurcation",
+  "equations": "d(x)/dt = (alpha - x**2) ",
+  "initial_conditions": {
+    "x": 0.0
+  },
+  "parameters": {
+    "alpha": "'0 to +0.4 with increments of 0.05, excluding 0'"
+  },
+  "vary_variable": "'\"alpha\" is varied between -0.2 and +0.4'",
+  "objective": "'Plot the variation of equilibrium points as a function of alpha values in one dimension.'"
+}

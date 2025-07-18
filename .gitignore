@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Streamlit cache
+/.streamlit/
+
+# DB, experiments, plots
+mcp.db
+experiments/
+*.png
+
+# IDE
+.idea/
+*.iml

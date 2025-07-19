@@ -1,0 +1,8 @@
+numpy
+scipy
+matplotlib
+pandas
+tqdm
+slugify
+openai
+streamlit

@@ -15,6 +15,7 @@ mcp.db
 experiments/
 models/
 *.png
+*.csv
 
 # IDE
 .idea/

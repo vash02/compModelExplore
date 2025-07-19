@@ -44,7 +44,7 @@ DB_PATH      = PROJECT_ROOT / "mcp.db"
 MAX_STEPS    = 20
 
 # Ensure your OpenAI API key is set
-openai.api_key = os.getenv("OPENAI_API_KEY", openai.api_key or "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")
+openai.api_key = os.getenv("OPENAI_API_KEY", openai.api_key or "")
 
 # Track any plots existing before the very first call
 seen_before = {p.name for p in Path.cwd().glob("*.png")}

@@ -123,7 +123,7 @@ def generate_code(
       store path in DB, and return model_id.
     • Retries up to `max_attempts` times.
     """
-    openai.api_key = os.getenv("OPENAI_API_KEY", "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")
+    openai.api_key = os.getenv("OPENAI_API_KEY", "")
 
     for attempt in range(1, max_attempts + 1):
         prompt_text = codegen_prompt_template.format(

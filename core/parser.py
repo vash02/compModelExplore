@@ -13,7 +13,7 @@ def tidy_json(txt: str) -> str:
     txt = _missing_comma.sub(r'\1, "', txt)
     return txt
 
-def parse_nl_input(nl_text: str, retries: int = 4, temperature: float = 0.3) -> dict:
+def parse_nl_input(nl_text: str, retries: int = 4, temperature: float = 0.0) -> dict:
     """
     Calls the local LLM with:
         system_prompt = parser_prompt

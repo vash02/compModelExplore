@@ -1,19 +1,22 @@
 # app.py — Streamlit UI for the full simulation→analysis pipeline
 
 import json
+from typing import Dict, Tuple
+
 import streamlit as st
 from pathlib import Path
 
 from core.parser import parse_nl_input
 from core.codegen import generate_code
 from mcp_sim_tool.core.param_utils import (
-    extract_ranges_from_prompt,
+    extract_param_settings,
     generate_param_grid,
 )
 from mcp_sim_tool.core.runner import run_batch
 from core.agent_loop import ask
 from db.schema import init_db
 from db.store import get_simulation_script
+from streamlit_chat import message
 
 # ─────────────────────────────────────────────────────────────────────
 # Initialize DB once
@@ -37,6 +40,26 @@ state.setdefault("last_df",         None)
 state.setdefault("analysis_result", None)
 state.setdefault("stop_requested",  False)
 state.setdefault("analysis_history", [])
+state.setdefault("chat_history", [])
+
+# ─────────────────────────────────────────────────────────────────────
+# Persist state across reruns
+# ─────────────────────────────────────────────────────────────────────
+state = st.session_state
+for key, default in {
+    "metadata": None,
+    "raw_metadata_json": "",
+    "model_id": None,
+    "script_code": "",
+    "code_approved": False,
+    "param_ranges": {},
+    "ranges_set": False,
+    "grid_size": 1000,
+    "last_df": None,
+    "chat_history": [],
+    "stop_requested": False
+}.items():
+    state.setdefault(key, default)
 
 # ─────────────────────────────────────────────────────────────────────
 # Sidebar navigation
@@ -61,7 +84,7 @@ if page == "Configure & Run":
             st.warning("Please enter a description first.")
         else:
             with st.spinner("Parsing…"):
-                meta = parse_nl_input(sim_query, retries=3, temperature=0.3)
+                meta = parse_nl_input(sim_query, retries=3, temperature=0.0)
             state.metadata = meta
             state.raw_metadata_json = json.dumps(meta, indent=2)
             # reset downstream
@@ -126,21 +149,73 @@ if page == "Configure & Run":
         st.code(edited_code, language="python")
 
     # 3) parameter ranges
+    # ─────────────────────────────────────────────────────────────────────
+    # Page: Configure & Run → Specify Parameter Ranges (updated)
+    # ─────────────────────────────────────────────────────────────────────
+    # 3) Specify Parameter Ranges
     if state.code_approved and not state.ranges_set:
-        st.header("Specify Parameter Ranges")
-        auto = extract_ranges_from_prompt(state.metadata)
-        st.write("Auto‑extracted:", auto or "None")
-        ranges = {}
-        for p in state.metadata["parameters"]:
-            lo, hi = st.slider(f"{p}", -100.0, 100.0, value=(0.0,1.0), key=f"{p}_sld")
-            ranges[p] = (lo, hi)
+        st.header("3. Specify Parameter Ranges")
+
+        # 1) Pull out float settings and tuple‐ranges
+        settings = extract_param_settings(state.metadata)
+
+        # 2) Build the sweep list:
+        #    start with metadata["vary_variable"], then auto‑add
+        #    any param having an explicit start/end in metadata["parameters"]
+        vary_list = list(state.metadata.get("vary_variable", []))
+        for name, desc in state.metadata.get("parameters", {}).items():
+            if isinstance(desc, dict) and "start" in desc and "end" in desc:
+                if name not in vary_list:
+                    vary_list.append(name)
+                    settings[name] = (float(desc["start"]), float(desc["end"]))
+
+        ranges: Dict[str, Tuple[float, float]] = {}
+
+        # 3) Render sliders for each sweep param
+        for param in vary_list:
+            raw = settings.get(param, ())
+            if isinstance(raw, tuple) and len(raw) == 2:
+                init_lo, init_hi = raw
+            else:
+                init_lo, init_hi = 0.0, 1.0
+
+            key = f"{param}_sld"
+            default = st.session_state.get(key, (init_lo, init_hi))
+            sel = st.slider(
+                f"{param} range",
+                min_value=-100.0,
+                max_value=100.0,
+                value=default,
+                key=key
+            )
+            ranges[param] = sel
+
+        # 4) Show all other parameters as fixed
+        for param, val in settings.items():
+            if param in vary_list:
+                continue
+
+            try:
+                num = float(val)
+            except:
+                num = 0.0
+            st.number_input(
+                f"{param} (fixed)",
+                value=num,
+                disabled=True,
+                key=f"{param}_fixed"
+            )
+            ranges[param] = (num, num)
+
+        # 5) Commit
         if st.button("✅ Set Ranges"):
             state.param_ranges = ranges
             state.ranges_set = True
-            st.success("Ranges set!")
+            st.success("Ranges saved—ready to run!")
 
     # 4) run
     if state.ranges_set and state.last_df is None:
+        # print("------------", state.param_ranges)
         st.header("Run Simulations")
         state.grid_size = st.number_input("Grid size", 10, 100_000, state.grid_size, 10)
         if st.button("▶️ Execute Batch"):
@@ -168,84 +243,86 @@ elif page == "Results":
             st.download_button("Download CSV", csv_path.read_bytes(), csv_path.name)
 
 # ─────────────────────────────────────────────────────────────────────
-# Page: Analysis
+# Page: Analysis with streamlit-chat
 # ─────────────────────────────────────────────────────────────────────
 elif page == "Analysis":
     st.title("💬 Analysis Chat")
 
+    from core.utils import extract_code_map
+    from streamlit_chat import message
+
+    # Stop button
+    if st.button("🛑 Stop Reasoning", key="stop_btn"):
+        state.stop_requested = True
+
+    # No‑data guard
     if state.last_df is None:
         st.warning("No data to analyze. Run a simulation first.")
-        st.stop()
+    else:
+        # 1) Render the full history so far
+        for i, msg in enumerate(state.chat_history):
+            is_user = (msg["role"] == "user")
+            message(msg["content"], is_user=is_user, key=f"hist_{i}")
+            # If this was an assistant message and it had images, show them
+            if not is_user and msg.get("images"):
+                with st.expander("📈 Plot(s)", expanded=False):
+                    for img in msg["images"]:
+                        st.image(img, use_column_width=True)
 
-    # ───────────────────────────────────────────────────
-    # 1) Render the existing chat
-    # ───────────────────────────────────────────────────
-    for msg in state.analysis_history:
-        role = msg["role"]
-        if msg.get("is_code"):
-            st.chat_message(role).code(msg["content"], language="python")
-        elif msg.get("is_tool"):
-            payload = msg["payload"]
-            # show stdout if any
-            if payload.get("stdout"):
-                st.chat_message("tool").write(payload["stdout"])
-            # show returned value
-            if payload.get("value") is not None:
-                st.chat_message("tool").json({"value": payload["value"]})
-            # show any new images
-            for img in payload.get("images", []):
-                st.chat_message("tool").image(img, use_column_width=True)
-        elif msg.get("is_image"):
-            st.chat_message(role).image(msg["content"], use_column_width=True)
-        else:
-            st.chat_message(role).markdown(msg["content"])
+        # 2) User input + retry
+        user_q = st.chat_input("Ask a question…", key="analysis_q")
+        last_q = next((m["content"] for m in reversed(state.chat_history)
+                       if m["role"] == "user"), None)
+        if last_q and st.button("↻ Retry Last Query", key="retry_btn"):
+            user_q = last_q
 
-    # ───────────────────────────────────────────────────
-    # 2) Accept a new user question
-    # ───────────────────────────────────────────────────
-    user_q = st.chat_input("Type your question here…")
-    if user_q:
-        # 2a) append the user
-        state.analysis_history.append({"role": "user", "content": user_q})
-        # 2b) call the agent
-        with st.spinner("Thinking…"):
-            result = ask(state.model_id, user_q, backend="openai")
-        # 2c) render every step in result["history"]
-        for step in result.get("history", []):
-            if step["role"] == "assistant" and step.get("function_call"):
-                # code snippet requested
-                args = json.loads(step["function_call"]["arguments"])
-                code = args.get("code", "")
-                state.analysis_history.append({
-                    "role": "assistant",
-                    "content": code,
-                    "is_code": True
-                })
-            elif step["role"] == "function":
-                # tool output
-                payload = json.loads(step["content"])
-                state.analysis_history.append({
-                    "role": "tool",
-                    "payload": payload,
-                    "is_tool": True
-                })
-            else:
-                # plain assistant/user text
-                state.analysis_history.append({
-                    "role": step["role"],
-                    "content": step["content"]
-                })
-        # 2d) final answer
-        answer = result.get("answer", "")
-        state.analysis_history.append({
-            "role": "assistant", "content": answer
-        })
-        # 2e) any final images
-        for img in result.get("images", []):
-            state.analysis_history.append({
-                "role": "assistant",
-                "content": img,
-                "is_image": True
+        # 3) Only proceed if user typed something
+        if user_q:
+            # 3a) Echo & persist user question
+            idx = len(state.chat_history)
+            message(user_q, is_user=True, key=f"user_{idx}")
+            state.chat_history.append({"role": "user", "content": user_q})
+
+            # 3b) Show “thinking…”
+            spinner = st.empty()
+            spinner.markdown("*🧠 Thinking…*")
+
+            # 3c) Call the agent
+            result = ask(
+                state.model_id,
+                user_q,
+                backend="openai",
+                stop_flag=lambda: state.stop_requested
+            )
+            spinner.empty()
+            state.stop_requested = False
+
+            # 3d) Show only **this** query’s code expanders
+            code_map = result.get("code_map", {}) or extract_code_map(result.get("history", []))
+            for step_idx, code in code_map.items():
+                with st.expander(f"▶️ Step {step_idx+1} Code", expanded=False):
+                    st.code(code, language="python")
+
+            # 3e) Parse out the JSON wrapper if present, then display the clean answer
+            raw = result.get("answer", "(no answer)")
+            try:
+                payload = json.loads(raw)
+                answer_text = payload.get("answer", raw)
+            except json.JSONDecodeError:
+                answer_text = raw
+
+            message(answer_text, is_user=False, key=f"assist_{idx}")
+
+            # 3f) Show plots under an expander and persist them
+            images = result.get("images", [])
+            if images:
+                with st.expander("📈 Plot(s)", expanded=False):
+                    for img in images:
+                        st.image(img, use_column_width=True)
+
+            # 3g) **Persist only** the clean answer text (no braces) + images
+            state.chat_history.append({
+                "role":   "assistant",
+                "content": answer_text,
+                "images":  images
             })
-        # 2f) re-run so the new history shows up
-        st.rerun()

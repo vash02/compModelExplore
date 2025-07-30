@@ -6,3 +6,17 @@ tqdm
 slugify
 openai
 streamlit
+streamlit-gradio
+gradio
+streamlit-chat
+pydantic
+ollama
+PyYAML
+# core LLM framework
+langchain>=0.0.238
+
+# community integrations (provides the `langchain_community` namespace)
+langchain-community>=0.2.19  # pip install langchain-community :contentReference[oaicite:0]{index=0}
+
+# Ollama integration for LangChain
+langchain-ollama>=0.3.5      # pip install langchain-ollama :contentReference[oaicite:1]{index=1}

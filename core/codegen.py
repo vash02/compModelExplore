@@ -112,6 +112,8 @@ def _install_requirements(pkgs: List[str]) -> None:
 MODELS_ROOT = Path("models")  # <── permanent home
 
 # Replace LocalLLM with OpenAI Chat API
+# core/codegen.py
+
 def generate_code(
     metadata: Dict,
     max_attempts: int = 4,
@@ -119,51 +121,68 @@ def generate_code(
 ) -> str:
     """
     • Prompt OpenAI Chat API → sanitize → static‐check (AST) → runtime smoke‐test
+      (with 30 s timeout)
+    • On failure, append the error context to messages and retry (≤max_attempts)
     • On success: prettify with Black, save to models/<slug>/simulate.py,
       store path in DB, and return model_id.
-    • Retries up to `max_attempts` times.
     """
-    openai.api_key = os.getenv("OPENAI_API_KEY", "")
+    from utils.config import settings
+
+    openai.api_key = settings.openai_api_key
+
+    # 1) build initial system prompt
+    system_prompt = codegen_prompt_template.format(
+        metadata_json=json.dumps(metadata, indent=2)
+    )
+    messages = [{"role": "system", "content": system_prompt}]
 
     for attempt in range(1, max_attempts + 1):
-        prompt_text = codegen_prompt_template.format(
-            metadata_json=json.dumps(metadata, indent=2)
-        )
-
-        # Call OpenAI ChatCompletion
-        response = openai.chat.completions.create(
-            model="gpt-4-0613",
-            messages=[{"role": "system", "content": prompt_text}],
+        # 2) call the LLM
+        resp = openai.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=messages,
             temperature=temperature,
         )
-        raw = response.choices[0].message.content or ""
-        cleaned = sanitize_simulation_code(raw)
+        raw_code = resp.choices[0].message.content or ""
+        cleaned = sanitize_simulation_code(raw_code)
 
-        # ── 1. static validation ───────────────────────────────────────
+        # 3) static validation
         try:
             validate_simulation_code(cleaned)
         except SyntaxError as syn:
             ctx = _syntax_context(cleaned, syn)
-            print(f"[✗] attempt {attempt}/{max_attempts} – SyntaxError: {syn.msg}\n → {ctx}")
+            err_msg = (
+                f"Attempt {attempt}: SyntaxError `{syn.msg}` at line {syn.lineno}\n"
+                f"Context:\n{ctx}\n\n"
+                "Please correct the code and return only the updated Python."
+            )
+            print(f"[✗] {err_msg}")
+            messages.append({"role": "user", "content": err_msg})
             continue
-        except ValueError as e:
-            print(f"[✗] attempt {attempt}/{max_attempts} – {e}")
+        except ValueError as ve:
+            err_msg = (
+                f"Attempt {attempt}: ValidationError `{ve}`\n\n"
+                "Please correct the code and return only the updated Python."
+            )
+            print(f"[✗] {err_msg}")
+            messages.append({"role": "user", "content": err_msg})
             continue
 
-        # ── 2. runtime smoke‐test ───────────────────────────────────────
+        # 4) runtime smoke‐test
         ok, log = _runtime_smoke_test(cleaned, timeout=30)
         if not ok:
-            dedented = _dedent_if_needed(cleaned)
-            if dedented != cleaned:
-                ok, log = _runtime_smoke_test(dedented, timeout=30)
-                if ok:
-                    cleaned = dedented
-        if not ok:
-            last_line = log.strip().splitlines()[-1] if log else ""
-            print(f"[✗] attempt {attempt}/{max_attempts} – runtime error:\n    {last_line}")
+            tb = _runtime_context(log)
+            last = log.strip().splitlines()[-1] if log else "<no output>"
+            err_msg = (
+                f"Attempt {attempt}: RuntimeError `{last}`\n"
+                f"Traceback (last 25 lines):\n{tb}\n\n"
+                "Please fix the code and return only the updated Python."
+            )
+            print(f"[✗] {err_msg}")
+            messages.append({"role": "user", "content": err_msg})
             continue
 
-        # ── 3. PASS → save & persist ────────────────────────────────────
+        # 5) success → persist
         model_slug = slugify(metadata.get("model_name", "unnamed_model"))
         model_dir = MODELS_ROOT / model_slug
         model_dir.mkdir(parents=True, exist_ok=True)
@@ -179,4 +198,7 @@ def generate_code(
         print(f"[✓] stored model_id = {model_id}  dir = {model_dir}")
         return model_id
 
-    raise RuntimeError("Exceeded attempts without valid code")
+    # all attempts exhausted
+    raise RuntimeError(
+        f"Exceeded {max_attempts} attempts without producing valid code."
+    )

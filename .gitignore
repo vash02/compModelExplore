@@ -14,6 +14,8 @@ env/
 mcp.db
 experiments/
 models/
+mcp_sim_tool/core/quick_sweep.py
+core/agent.py
 *.png
 *.csv
 

@@ -29,14 +29,16 @@ def load_results(
     raw_df = pd.read_sql("SELECT model_id, params, outputs, ts FROM results", con)
     con.close()
 
+    # print(raw_df.head())
     # 2) optionally filter to only the given model_id
+    print("===========",model_id,"==========")
     if model_id is not None:
         raw_df = raw_df[raw_df["model_id"] == model_id]
-
+    # print(raw_df.head())
     # 3) parse the JSON columns safely
     raw_df["params"] = raw_df["params"].apply(_safe_parse)
     raw_df["outputs"] = raw_df["outputs"].apply(_safe_parse)
-
+    # print(raw_df.head())
     # 4) drop any rows where parsing failed (empty dict)
     filtered = raw_df[
         raw_df["params"].apply(bool) & raw_df["outputs"].apply(bool)
@@ -47,6 +49,8 @@ def load_results(
     outputs_df = pd.json_normalize(filtered["outputs"])
 
     # 6) concatenate model_id, ts, parameters, and outputs
+    print(params_df.head())
+    print(outputs_df.head())
     final = pd.concat(
         [
             filtered[["model_id", "ts"]],

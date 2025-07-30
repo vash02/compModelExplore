@@ -40,8 +40,10 @@ def import_simulate(script_path: Path):
 
 # ───────────── single run ─────────────
 def run_simulation(script_path: Path, params: Dict) -> Dict:
+    print("========================== params", params)
     try:
         simulate = import_simulate(script_path)
+        # print("========================== params", params)
         res = simulate(**params)
         if not isinstance(res, dict):
             raise TypeError("simulate() must return dict")
@@ -66,7 +68,7 @@ def run_batch(model_id: str,
     )
     sys.path.insert(0, str(lib_dir))         # make packages importable
     sys.path.insert(0, str(model_dir))       # so `import simulate` would work
-
+    # print("----------------param_grid-----------------", param_grid)
     rows = [run_simulation(script_path, p)
             for p in tqdm(param_grid, desc=f"Running {model_id}")]
 

@@ -93,7 +93,7 @@ Click **Parse Metadata** → edit if needed → **Generate Code & Model** → **
 
 ### Inspect results
 
-- Download `experiments/&lt;model_id&gt;_results.csv`.
+- Download `results.csv`.
 - Or use the **Results** page to view in‑browser.
 
 ---
